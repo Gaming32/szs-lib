@@ -26,7 +26,7 @@ public class SzsFileSystem extends FileSystem {
     private final DecompressedSzsFile.DirectoryNode root;
     private final int toPathChop;
 
-    private final SzsPath rootPath = new SzsPath(this, "/", true);
+    private final SzsPath rootPath = new SzsPath(this, SzsPath.EMPTY_PATH, true);
 
     SzsFileSystem(SzsFileSystemProvider provider, Path path, Map<String, ?> env) throws IOException {
         this.provider = provider;
@@ -52,7 +52,7 @@ public class SzsFileSystem extends FileSystem {
             root = dir;
         }
         this.root = root;
-        toPathChop = root.getFullPath().length();
+        toPathChop = root.getParents().length + 1;
     }
 
     @Override
@@ -116,7 +116,7 @@ public class SzsFileSystem extends FileSystem {
     @Override
     public Path getPath(String first, String... more) {
         if (more.length == 0) {
-            return new SzsPath(this, first, false);
+            return new SzsPath(this, first);
         }
         final StringBuilder result = new StringBuilder(first);
         for (final String sub : more) {
@@ -127,7 +127,7 @@ public class SzsFileSystem extends FileSystem {
                 result.append('/').append(sub);
             }
         }
-        return new SzsPath(this, result.toString(), false);
+        return new SzsPath(this, result.toString());
     }
 
     @Override
@@ -145,11 +145,9 @@ public class SzsFileSystem extends FileSystem {
             if (syntax.equalsIgnoreCase(REGEX_SYNTAX)) {
                 expr = input;
             } else {
-                throw new UnsupportedOperationException("Syntax '" + syntax +
-                    "' not recognized");
+                throw new UnsupportedOperationException("Syntax '" + syntax + "' not recognized");
             }
         }
-        // return matcher
         final Pattern pattern = Pattern.compile(expr);
         return (path) -> pattern.matcher(path.toString()).matches();
     }
@@ -165,15 +163,12 @@ public class SzsFileSystem extends FileSystem {
     }
 
     private DecompressedSzsFile.TreeNode getNode(SzsPath path) {
-        String strPath = path.normalizeToString();
-        if (strPath.isEmpty() || strPath.equals("/")) {
+        final String[] parts = path.normalize().getParts();
+        if (parts.length == 0 || (parts.length == 1 && parts[0].isEmpty())) {
             return root;
         }
-        if (strPath.startsWith("/")) {
-            strPath = strPath.substring(1);
-        }
         try {
-            return root.resolve(strPath);
+            return root.resolveParts(parts);
         } catch (IllegalArgumentException e) {
             return null;
         }
@@ -210,8 +205,13 @@ public class SzsFileSystem extends FileSystem {
         if (node == root) {
             return rootPath;
         }
-        final String result = node.getFullPath();
-        return new SzsPath(this, result.substring(toPathChop), true);
+        final DecompressedSzsFile.DirectoryNode[] parents = node.getParents();
+        final List<String> result = new ArrayList<>();
+        for (int i = toPathChop; i < parents.length; i++) {
+            result.add(parents[i].getName());
+        }
+        result.add(node.getName());
+        return new SzsPath(this, result.toArray(String[]::new), true);
     }
 
     public SeekableByteChannel newByteChannel(

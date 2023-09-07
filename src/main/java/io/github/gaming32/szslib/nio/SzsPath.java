@@ -7,55 +7,47 @@ import java.nio.channels.SeekableByteChannel;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileAttribute;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Set;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class SzsPath implements Path {
-    private static final int[] EMPTY_OFFSETS = new int[0];
+    static final String[] EMPTY_PATH = new String[0];
 
     private final SzsFileSystem fileSystem;
-    private final String path;
-    private String normalized;
-    private int[] offsets;
+    private final String[] path;
+    private final boolean absolute;
+    private SzsPath normalized;
 
-    SzsPath(SzsFileSystem fileSystem, String path, boolean canonical) {
+    SzsPath(SzsFileSystem fileSystem, String[] path, boolean absolute) {
         this.fileSystem = fileSystem;
-        this.path = canonical ? path : canonicalize(path);
+        this.path = path; // Caller is expected to copy if necessary!
+        this.absolute = absolute;
     }
 
-    private static String canonicalize(String path) {
-        if (path.length() < 2) {
-            return path;
-        }
-        for (int i = 1; i < path.length(); i++) {
-            if (path.charAt(i) == '/' && path.charAt(i - 1) == '/') {
-                return canonicalize0(path, i);
-            }
-        }
-        if (path.charAt(path.length() - 1) == '/') {
-            return path.substring(0, path.length() - 1);
-        }
-        return path;
+    SzsPath(SzsFileSystem fileSystem, String singlePart, boolean absolute) {
+        this(fileSystem, new String[] {singlePart}, absolute);
     }
 
-    private static String canonicalize0(String path, int goodUntil) {
-        final StringBuilder result = new StringBuilder(path);
-        result.setLength(goodUntil);
-        int lastI = goodUntil + 1;
-        int i = lastI;
-        while (true) {
-            for (; i < path.length(); i++) {
-                if (path.charAt(i) == '/' && path.charAt(i - 1) == '/') break;
-            }
-            result.append(path, lastI, i);
-            if (i == path.length()) break;
-            lastI = ++i;
+    SzsPath(SzsFileSystem fileSystem, String path) {
+        this.fileSystem = fileSystem;
+        final String[] parts = path.split("/+");
+        if (parts.length == 0) {
+            this.path = EMPTY_PATH;
+            this.absolute = true;
+        } else if (parts.length == 1 && parts[0].isEmpty()) {
+            this.path = parts;
+            this.absolute = false;
+        } else if (parts[0].isEmpty()) {
+            this.path = Arrays.copyOfRange(parts, 1, parts.length);
+            this.absolute = true;
+        } else {
+            this.path = parts;
+            this.absolute = false;
         }
-        if (result.charAt(result.length() - 1) == '/') {
-            result.setLength(result.length() - 1);
-        }
-        return result.toString();
     }
 
     @Override
@@ -63,9 +55,13 @@ public class SzsPath implements Path {
         return fileSystem;
     }
 
+    String[] getParts() {
+        return path;
+    }
+
     @Override
     public boolean isAbsolute() {
-        return path.startsWith("/");
+        return absolute;
     }
 
     @Override
@@ -75,58 +71,23 @@ public class SzsPath implements Path {
 
     @Override
     public Path getFileName() {
-        final int slashIndex = path.lastIndexOf('/');
-        return slashIndex == -1 ? this : new SzsPath(fileSystem, path.substring(slashIndex + 1), true);
+        return path.length == 0 ? null : new SzsPath(fileSystem, path[path.length - 1], false);
     }
 
     @Override
     public Path getParent() {
-        final int slashIndex = path.lastIndexOf('/');
-        return slashIndex < 1 ? null : new SzsPath(fileSystem, path.substring(slashIndex), true);
-    }
-
-    private int[] initOffsets() {
-        if (offsets == null) {
-            // Ok if calculated multiple times
-            if (path.equals("/")) {
-                return offsets = EMPTY_OFFSETS;
-            }
-
-            int offsetCount = 1;
-            for (int i = 1; i < path.length(); i++) {
-                if (path.charAt(i) == '/') {
-                    offsetCount++;
-                }
-            }
-
-            final int[] newOffsets = new int[offsetCount];
-            int index = isAbsolute() ? 1 : 0;
-            int offset = 1;
-            newOffsets[0] = index;
-            while (index < path.length()) {
-                final int next = path.indexOf('/', index) + 1;
-                if (next == 0) break;
-                newOffsets[offset++] = next;
-                index = next;
-            }
-
-            return offsets = newOffsets;
+        if (path.length == 0) {
+            return null;
         }
-        return offsets;
+        if (path.length == 1) {
+            return absolute ? new SzsPath(fileSystem, EMPTY_PATH, true) : null;
+        }
+        return new SzsPath(fileSystem, Arrays.copyOf(path, path.length - 1), absolute);
     }
 
     @Override
     public int getNameCount() {
-        return initOffsets().length;
-    }
-
-    private String getSubPath(int index) {
-        final int[] offsets = initOffsets();
-        if (index == offsets.length - 1) {
-            return path.substring(offsets[index]);
-        } else {
-            return path.substring(offsets[index], offsets[index + 1] - 1);
-        }
+        return path.length;
     }
 
     @Override
@@ -134,11 +95,10 @@ public class SzsPath implements Path {
         if (index < 0) {
             throw new IllegalArgumentException("index (" + index + ") < 0");
         }
-        final int[] offsets = initOffsets();
-        if (index >= offsets.length) {
-            throw new IllegalArgumentException("index (" + index + ") >= " + offsets.length);
+        if (index >= path.length) {
+            throw new IllegalArgumentException("index (" + index + ") >= " + path.length);
         }
-        return new SzsPath(fileSystem, getSubPath(index), true);
+        return new SzsPath(fileSystem, path[index], false);
     }
 
     @Override
@@ -149,20 +109,13 @@ public class SzsPath implements Path {
         if (endIndex < 0) {
             throw new IllegalArgumentException("endIndex (" + endIndex + ") < 0");
         }
-        final int[] offsets = initOffsets();
-        if (beginIndex >= offsets.length) {
-            throw new IllegalArgumentException("beginIndex (" + beginIndex + ") >= " + offsets.length);
+        if (beginIndex >= path.length) {
+            throw new IllegalArgumentException("beginIndex (" + beginIndex + ") >= " + path.length);
         }
-        if (endIndex > offsets.length) {
-            throw new IllegalArgumentException("endIndex (" + endIndex + ") >= " + offsets.length);
+        if (endIndex > path.length) {
+            throw new IllegalArgumentException("endIndex (" + endIndex + ") >= " + path.length);
         }
-        final String subPath;
-        if (endIndex == offsets.length) {
-            subPath = path.substring(offsets[beginIndex]);
-        } else {
-            subPath = path.substring(offsets[beginIndex], offsets[endIndex] - 1);
-        }
-        return new SzsPath(fileSystem, subPath, true);
+        return new SzsPath(fileSystem, Arrays.copyOfRange(path, beginIndex, endIndex), false);
     }
 
     @Override
@@ -171,14 +124,15 @@ public class SzsPath implements Path {
             return false;
         }
         final SzsPath o = (SzsPath)other;
-        if (o.isAbsolute() != isAbsolute()) {
+        if (o.absolute != absolute || o.path.length > path.length) {
             return false;
         }
-        if (!path.startsWith(o.path)) {
-            return false;
+        for (int i = 0; i < o.path.length; i++) {
+            if (!path[i].equals(o.path[i])) {
+                return false;
+            }
         }
-        final int oLength = o.path.length();
-        return oLength == path.length() || o.path.charAt(oLength - 1) == '/' || path.charAt(oLength) == '/';
+        return true;
     }
 
     @Override
@@ -187,53 +141,61 @@ public class SzsPath implements Path {
             return false;
         }
         final SzsPath o = (SzsPath)other;
-        final int oLength = o.path.length();
-        final int length = path.length();
-        if ((o.isAbsolute() && (!isAbsolute() || oLength != length)) || length < oLength) {
+        final int oLength = o.path.length;
+        final int length = path.length;
+        if ((o.absolute && (!absolute || oLength != length)) || length < oLength) {
             return false;
         }
-        if (!path.endsWith(o.path)) {
-            return false;
-        }
-        return length == oLength || path.charAt(length - oLength) == '/';
-    }
-
-    public String normalizeToString() {
-        if (normalized != null) {
-            return normalized;
-        }
-        if (path.equals(".")) {
-            return normalized = "";
-        }
-        final int[] offsets = initOffsets();
-        if (offsets.length < 2) {
-            return normalized = path;
-        }
-        final StringBuilder result = new StringBuilder(isAbsolute() ? "/" : "");
-        for (int i = 1; i < offsets.length + 1; i++) {
-            final String part = i < offsets.length
-                ? path.substring(offsets[i - 1], offsets[i] - 1)
-                : path.substring(offsets[i - 1]);
-            if (part.equals(".")) {
-                continue;
+        for (int i = oLength - 1, j = length - 1; i >= 0; i--, j--) {
+            if (!path[j].equals(o.path[i])) {
+                return false;
             }
-            if (part.equals("..") && result.length() > 2) {
-                final int delPartIndex = result.lastIndexOf("/", result.length() - 2) + 1;
-                if (delPartIndex != result.length() - 3 || result.charAt(delPartIndex) != '.' || result.charAt(delPartIndex + 1) != '.') {
-                    result.setLength(result.lastIndexOf("/", result.length() - 2) + 1);
-                    continue;
-                }
-            }
-            result.append(part).append('/');
         }
-        result.setLength(result.length() - 1);
-        return normalized = result.toString();
+        return true;
     }
 
     @Override
     public SzsPath normalize() {
-        //noinspection StringEquality
-        return normalizeToString() == path ? this : new SzsPath(fileSystem, normalized, true);
+        if (normalized != null) {
+            return normalized;
+        }
+        if (path.length < 2) {
+            return normalized = this;
+        }
+
+        boolean found = false;
+        for (final String part : path) {
+            // Fast path: do nothing if none of the parts are special
+            if (part.equals(".") || part.equals("..")) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            return normalized = this;
+        }
+
+        final List<String> result = new ArrayList<>(path.length);
+        for (int i = 0; i < path.length; i++) {
+            final String part = path[i];
+            if (part.equals(".")) {
+                continue; // Simply skip
+            }
+            if (part.equals("..") && i > 0) {
+                final int lastIndex = result.size() - 1;
+                if (!result.get(lastIndex).equals("..")) {
+                    result.remove(lastIndex);
+                } else {
+                    result.add("..");
+                }
+                continue;
+            }
+            result.add(part);
+        }
+        if (result.size() == path.length) {
+            return normalized = this;
+        }
+        return normalized = new SzsPath(fileSystem, result.toArray(String[]::new), absolute);
     }
 
     @Override
@@ -241,13 +203,16 @@ public class SzsPath implements Path {
         if (!(other instanceof SzsPath o)) {
             throw new ProviderMismatchException();
         }
-        if (path.isEmpty() || o.isAbsolute()) {
+        if ((path.length == 1 && path[0].isEmpty()) || o.absolute) {
             return o;
         }
-        if (o.path.isEmpty()) {
+        if (o.path.length == 1 && path[0].isEmpty()) {
             return this;
         }
-        return new SzsPath(fileSystem, path + '/' + o.path, true);
+        final String[] parts = new String[path.length + o.path.length];
+        System.arraycopy(path, 0, parts, 0, path.length);
+        System.arraycopy(o.path, 0, parts, path.length, o.path.length);
+        return new SzsPath(fileSystem, parts, absolute);
     }
 
     @Override
@@ -259,23 +224,22 @@ public class SzsPath implements Path {
         final int oNameCount = o.getNameCount();
         int sameStart = 0;
         for (int i = 0, l = Math.min(nameCount, oNameCount); i < l; i++) {
-            if (getSubPath(i).equals(o.getSubPath(i))) {
+            if (path[i].equals(o.path[i])) {
                 sameStart++;
             } else {
                 break;
             }
         }
 
-        final StringBuilder result = new StringBuilder();
-        if (sameStart < nameCount) {
-            result.append("../".repeat(nameCount - sameStart));
+        final List<String> result = new ArrayList<>();
+        for (int i = 0; i < nameCount - sameStart; i++) {
+            result.add("..");
         }
-        if (oNameCount > sameStart) {
-            result.append(o.path.substring(o.offsets[sameStart]));
-        } else if (sameStart < nameCount) {
-            result.setLength(result.length() - 1);
+        //noinspection ManualArrayToCollectionCopy
+        for (int i = sameStart; i < oNameCount; i++) {
+            result.add(o.path[i]);
         }
-        return new SzsPath(fileSystem, result.toString(), true);
+        return new SzsPath(fileSystem, result.toArray(String[]::new), false);
     }
 
     private static int decode(char c) {
@@ -344,7 +308,13 @@ public class SzsPath implements Path {
 
     @Override
     public Path toAbsolutePath() {
-        return isAbsolute() ? this : new SzsPath(fileSystem, '/' + path, true);
+        if (absolute) {
+            return this;
+        }
+        if (path.length == 1 && path[0].isEmpty()) {
+            return fileSystem.getRootPath();
+        }
+        return new SzsPath(fileSystem, path, true);
     }
 
     @Override
@@ -364,12 +334,12 @@ public class SzsPath implements Path {
         if (!(other instanceof SzsPath o)) {
             throw new ProviderMismatchException();
         }
-        return path.compareTo(o.path);
+        return Arrays.compare(path, o.path);
     }
 
     @Override
     public String toString() {
-        return path;
+        return (absolute ? "/" : "") + String.join("/", path);
     }
 
     public SeekableByteChannel newByteChannel(

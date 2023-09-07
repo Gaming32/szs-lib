@@ -277,7 +277,12 @@ public class U8File implements DecompressedSzsFile {
 
         @Override
         public TreeNode resolve(String path) {
-            return (TreeNode)DecompressedSzsFile.DirectoryNode.super.resolve(path);
+            return resolveParts(path.split("/"));
+        }
+
+        @Override
+        public TreeNode resolveParts(String... parts) {
+            return (TreeNode)DecompressedSzsFile.DirectoryNode.super.resolveParts(parts);
         }
     }
 

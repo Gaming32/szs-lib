@@ -134,8 +134,11 @@ public interface DecompressedSzsFile extends Closeable {
         TreeNode getChild(String name);
 
         default TreeNode resolve(String path) {
+            return resolveParts(path.split("/"));
+        }
+
+        default TreeNode resolveParts(String... parts) {
             TreeNode current = this;
-            final String[] parts = path.split("/");
             for (final String part : parts) {
                 if (!(current instanceof DirectoryNode dir)) {
                     if (current != null) {

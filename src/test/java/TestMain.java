@@ -50,13 +50,6 @@ public class TestMain {
                 System.out.println(HexFormat.of().formatHex(digest.digest()));
             }
         }
-//        System.out.println(SzsPath.canonicalize(""));
-//        System.out.println(SzsPath.canonicalize("hi"));
-//        System.out.println(SzsPath.canonicalize("/hi"));
-//        System.out.println(SzsPath.canonicalize("/h/i"));
-//        System.out.println(SzsPath.canonicalize("/h//i"));
-//        System.out.println(SzsPath.canonicalize("/h///i"));
-//        System.out.println(SzsPath.canonicalize("/h////i"));
     }
 
     public static void mainOld(String[] args) throws Exception {
