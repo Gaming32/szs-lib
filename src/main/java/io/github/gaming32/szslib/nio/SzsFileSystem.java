@@ -1,0 +1,289 @@
+package io.github.gaming32.szslib.nio;
+
+import io.github.gaming32.szslib.SzsDetector;
+import io.github.gaming32.szslib.decompressed.DecompressedSzsFile;
+import io.github.gaming32.szslib.u8.U8File;
+import io.github.gaming32.szslib.yaz0.Yaz0InputStream;
+
+import java.io.BufferedInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.channels.SeekableByteChannel;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileAttribute;
+import java.nio.file.attribute.UserPrincipalLookupService;
+import java.util.*;
+import java.util.regex.Pattern;
+
+public class SzsFileSystem extends FileSystem {
+    private static final String GLOB_SYNTAX = "glob";
+    private static final String REGEX_SYNTAX = "regex";
+
+    private final SzsFileSystemProvider provider;
+    private final Path path;
+    private final DecompressedSzsFile file;
+    private final DecompressedSzsFile.DirectoryNode root;
+    private final int toPathChop;
+
+    private final SzsPath rootPath = new SzsPath(this, "/", true);
+
+    SzsFileSystem(SzsFileSystemProvider provider, Path path, Map<String, ?> env) throws IOException {
+        this.provider = provider;
+        this.path = path;
+
+        this.file = switch (SzsDetector.getFormat(path)) {
+            case Yaz0 -> {
+                try (InputStream is = new BufferedInputStream(new Yaz0InputStream(path))) {
+                    is.mark(4);
+                    final SzsDetector.Format innerFormat = SzsDetector.getFormat(is);
+                    is.reset();
+                    yield switch (innerFormat) {
+                        case Yaz0 -> throw new IllegalArgumentException("Recursive Yaz0 not supported");
+                        case U8 -> U8File.fromInputStream(is);
+                    };
+                }
+            }
+            case U8 -> U8File.fromPath(path);
+        };
+
+        DecompressedSzsFile.DirectoryNode root = file.getRoot();
+        while (root.getChild(".") instanceof DecompressedSzsFile.DirectoryNode dir) {
+            root = dir;
+        }
+        this.root = root;
+        toPathChop = root.getFullPath().length();
+    }
+
+    @Override
+    public SzsFileSystemProvider provider() {
+        return provider;
+    }
+
+    public Path getPath() {
+        return path;
+    }
+
+    @Override
+    public void close() throws IOException {
+        file.close();
+    }
+
+    @Override
+    public boolean isOpen() {
+        return file.isOpen();
+    }
+
+    @Override
+    public boolean isReadOnly() {
+        return true;
+    }
+
+    @Override
+    public String getSeparator() {
+        return "/";
+    }
+
+    public SzsPath getRootPath() {
+        return rootPath;
+    }
+
+    @Override
+    public Iterable<Path> getRootDirectories() {
+        return Collections.singleton(rootPath);
+    }
+
+    @Override
+    public Iterable<FileStore> getFileStores() {
+        final List<FileStore> result = new ArrayList<>();
+        final Queue<DecompressedSzsFile.TreeNode> queue = new ArrayDeque<>();
+        queue.add(root);
+        while (!queue.isEmpty()) {
+            final DecompressedSzsFile.TreeNode node = queue.remove();
+            result.add(new SzsFileStore(node, toPath(node)));
+            if (node instanceof DecompressedSzsFile.DirectoryNode dir) {
+                queue.addAll(dir.getChildren().values());
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public Set<String> supportedFileAttributeViews() {
+        return Collections.singleton("basic");
+    }
+
+    @Override
+    public Path getPath(String first, String... more) {
+        if (more.length == 0) {
+            return new SzsPath(this, first, false);
+        }
+        final StringBuilder result = new StringBuilder(first);
+        for (final String sub : more) {
+            if (sub.startsWith("/")) {
+                result.setLength(0);
+                result.append(sub);
+            } else {
+                result.append('/').append(sub);
+            }
+        }
+        return new SzsPath(this, result.toString(), false);
+    }
+
+    @Override
+    public PathMatcher getPathMatcher(String syntaxAndInput) {
+        int pos = syntaxAndInput.indexOf(':');
+        if (pos <= 0) {
+            throw new IllegalArgumentException();
+        }
+        String syntax = syntaxAndInput.substring(0, pos);
+        String input = syntaxAndInput.substring(pos + 1);
+        String expr;
+        if (syntax.equalsIgnoreCase(GLOB_SYNTAX)) {
+            expr = GlobUtils.toRegexPattern(input);
+        } else {
+            if (syntax.equalsIgnoreCase(REGEX_SYNTAX)) {
+                expr = input;
+            } else {
+                throw new UnsupportedOperationException("Syntax '" + syntax +
+                    "' not recognized");
+            }
+        }
+        // return matcher
+        final Pattern pattern = Pattern.compile(expr);
+        return (path) -> pattern.matcher(path.toString()).matches();
+    }
+
+    @Override
+    public UserPrincipalLookupService getUserPrincipalLookupService() {
+        throw new UnsupportedOperationException("getUserPrincipalLookupService");
+    }
+
+    @Override
+    public WatchService newWatchService() {
+        throw new UnsupportedOperationException("newWatchService");
+    }
+
+    private DecompressedSzsFile.TreeNode getNode(SzsPath path) {
+        String strPath = path.normalizeToString();
+        if (strPath.isEmpty() || strPath.equals("/")) {
+            return root;
+        }
+        if (strPath.startsWith("/")) {
+            strPath = strPath.substring(1);
+        }
+        try {
+            return root.resolve(strPath);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private DecompressedSzsFile.FileNode getFileForReading(
+        SzsPath path, Set<? extends OpenOption> options
+    ) throws NoSuchFileException {
+        for (final OpenOption option : options) {
+            if (option == null) {
+                throw new NullPointerException("option == null");
+            }
+            if (!(option instanceof StandardOpenOption)) {
+                throw new UnsupportedOperationException("option not an instance of StandardOpenOption");
+            }
+        }
+        if (!options.isEmpty() && !options.contains(StandardOpenOption.READ)) {
+            throw new UnsupportedOperationException("SzsFileSystem is read only!");
+        }
+        final DecompressedSzsFile.TreeNode node = getNode(path);
+        if (node == null) {
+            throw new NoSuchFileException(path.toString(), null, "not found");
+        }
+        if (node instanceof DecompressedSzsFile.DirectoryNode) {
+            throw new NoSuchFileException(path.toString(), null, "is a directory");
+        }
+        if (!(node instanceof DecompressedSzsFile.FileNode fileNode)) {
+            throw new NoSuchFileException(path.toString(), null, "not a regular file");
+        }
+        return fileNode;
+    }
+
+    private SzsPath toPath(DecompressedSzsFile.TreeNode node) {
+        if (node == root) {
+            return rootPath;
+        }
+        final String result = node.getFullPath();
+        return new SzsPath(this, result.substring(toPathChop), true);
+    }
+
+    public SeekableByteChannel newByteChannel(
+        SzsPath path, Set<? extends OpenOption> options, FileAttribute<?>... attrs
+    ) throws NoSuchFileException {
+        return getFileForReading(path, options).openChannel();
+    }
+
+    public DirectoryStream<Path> newDirectoryStream(
+        SzsPath dir, DirectoryStream.Filter<? super Path> filter
+    ) throws NotDirectoryException {
+        final DecompressedSzsFile.TreeNode node = getNode(dir);
+        if (!(node instanceof DecompressedSzsFile.DirectoryNode dirNode)) {
+            throw new NotDirectoryException(dir.toString());
+        }
+        return new DirectoryStream<>() {
+            boolean created, closed;
+
+            @Override
+            public Iterator<Path> iterator() {
+                checkClosed();
+                if (created) {
+                    throw new IllegalStateException("already called");
+                }
+                created = true;
+                return new Iterator<>() {
+                    final Iterator<? extends DecompressedSzsFile.TreeNode> iter = dirNode.getChildren().values().iterator();
+
+                    @Override
+                    public boolean hasNext() {
+                        checkClosed();
+                        return iter.hasNext();
+                    }
+
+                    @Override
+                    public Path next() {
+                        checkClosed();
+                        return toPath(iter.next());
+                    }
+                };
+            }
+
+            private void checkClosed() {
+                if (closed) {
+                    throw new IllegalStateException("closed");
+                }
+            }
+
+            @Override
+            public void close() {
+                closed = true;
+            }
+        };
+    }
+
+    public SzsFileStore getFileStore(SzsPath path) throws NoSuchFileException {
+        final DecompressedSzsFile.TreeNode node = getNode(path);
+        if (node == null) {
+            throw new NoSuchFileException(path.toString(), null, "not found");
+        }
+        return new SzsFileStore(node, toPath(node));
+    }
+
+    public boolean exists(SzsPath path) {
+        return getNode(path) != null;
+    }
+
+    public BasicFileAttributes readAttributes(SzsPath path) throws NoSuchFileException {
+        final DecompressedSzsFile.TreeNode node = getNode(path);
+        if (node == null) {
+            throw new NoSuchFileException(path.toString(), null, "not found");
+        }
+        return node.getAttributes();
+    }
+}
