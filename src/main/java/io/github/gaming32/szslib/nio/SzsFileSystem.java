@@ -4,11 +4,13 @@ import io.github.gaming32.szslib.SzsDetector;
 import io.github.gaming32.szslib.decompressed.DecompressedSzsFile;
 import io.github.gaming32.szslib.u8.U8File;
 import io.github.gaming32.szslib.yaz0.Yaz0InputStream;
+import org.apache.commons.compress.utils.IOUtils;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.channels.SeekableByteChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileAttribute;
@@ -32,20 +34,9 @@ public class SzsFileSystem extends FileSystem {
         this.provider = provider;
         this.path = path;
 
-        this.file = switch (SzsDetector.getFormat(path)) {
-            case Yaz0 -> {
-                try (InputStream is = new BufferedInputStream(new Yaz0InputStream(path))) {
-                    is.mark(4);
-                    final SzsDetector.Format innerFormat = SzsDetector.getFormat(is);
-                    is.reset();
-                    yield switch (innerFormat) {
-                        case Yaz0 -> throw new IllegalArgumentException("Recursive Yaz0 not supported");
-                        case U8 -> U8File.fromInputStream(is);
-                    };
-                }
-            }
-            case U8 -> U8File.fromPath(path);
-        };
+        try (final InputStream is = new BufferedInputStream(Files.newInputStream(path))) {
+            this.file = openFile(is);
+        }
 
         DecompressedSzsFile.DirectoryNode root = file.getRoot();
         while (root.getChild(".") instanceof DecompressedSzsFile.DirectoryNode dir) {
@@ -53,6 +44,25 @@ public class SzsFileSystem extends FileSystem {
         }
         this.root = root;
         toPathChop = root.getParents().length + 1;
+    }
+
+    private static DecompressedSzsFile openFile(InputStream is) throws IOException {
+        is.mark(4);
+        final SzsDetector.Format format = SzsDetector.getFormat(is);
+        is.reset();
+        if (format == null) {
+            final byte[] magic = new byte[4];
+            IOUtils.readFully(is, magic);
+            throw new IOException("Unknown SZS format: " + new String(magic, StandardCharsets.ISO_8859_1));
+        }
+        return switch (format) {
+            case Yaz0 -> {
+                try (InputStream innerStream = new BufferedInputStream(new Yaz0InputStream(is))) {
+                    yield openFile(innerStream);
+                }
+            }
+            case U8 -> U8File.fromInputStream(is);
+        };
     }
 
     @Override

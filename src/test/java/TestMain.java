@@ -14,7 +14,7 @@ import java.util.HexFormat;
 public class TestMain {
     public static void main(String[] args) throws Exception {
         try (FileSystem fs = FileSystems.newFileSystem(
-            new URI("szs:" + TestMain.class.getResource("/Common.szs")), Collections.emptyMap()
+            new URI("szs:" + TestMain.class.getResource("/HideAndSeekIcon.szs")), Collections.emptyMap()
         )) {
             Files.walkFileTree(fs.getPath("/"), new SimpleFileVisitor<>() {
                 @Override
@@ -37,18 +37,18 @@ public class TestMain {
             });
             System.out.println();
 
-            final Path blight = fs.getPath("./lightset/.//../lightset//default.blight/");
-            System.out.println(blight.normalize());
-            System.out.println(Files.readAttributes(blight, BasicFileAttributes.class));
-            try (InputStream is2 = Files.newInputStream(blight)) {
-                final MessageDigest digest = MessageDigest.getInstance("SHA-1");
-                final byte[] buf = new byte[8192];
-                int n;
-                while ((n = is2.read(buf)) != -1) {
-                    digest.update(buf, 0, n);
-                }
-                System.out.println(HexFormat.of().formatHex(digest.digest()));
-            }
+//            final Path blight = fs.getPath("./lightset/.//../lightset//default.blight/");
+//            System.out.println(blight.normalize());
+//            System.out.println(Files.readAttributes(blight, BasicFileAttributes.class));
+//            try (InputStream is2 = Files.newInputStream(blight)) {
+//                final MessageDigest digest = MessageDigest.getInstance("SHA-1");
+//                final byte[] buf = new byte[8192];
+//                int n;
+//                while ((n = is2.read(buf)) != -1) {
+//                    digest.update(buf, 0, n);
+//                }
+//                System.out.println(HexFormat.of().formatHex(digest.digest()));
+//            }
         }
     }
 
