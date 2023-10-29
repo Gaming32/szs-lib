@@ -107,6 +107,9 @@ public class U8File implements DecompressedSzsFile {
 
     @Override
     public DirectoryNode getRoot() {
+        if (rootNode == null) {
+            throw new IllegalStateException("U8File closed");
+        }
         return rootNode;
     }
 
@@ -217,7 +220,7 @@ public class U8File implements DecompressedSzsFile {
     public final class DirectoryNode extends TreeNode implements DecompressedSzsFile.DirectoryNode {
         private final int parentNodeIndex;
         private final int siblingNodeIndex;
-        private Map<String, TreeNode> children = new LinkedHashMap<>();
+        private final Map<String, TreeNode> children = new LinkedHashMap<>();
 
         private DirectoryNode(ByteBuffer buffer, int nodeIndex, int stringPoolOffset) throws IOException {
             super(buffer, nodeIndex, stringPoolOffset);

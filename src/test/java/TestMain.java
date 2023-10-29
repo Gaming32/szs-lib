@@ -12,7 +12,7 @@ import java.util.Collections;
 import java.util.HexFormat;
 
 public class TestMain {
-    public static void main(String[] args) throws Exception {
+    public static void mainSarc(String[] args) throws Exception {
         try (FileSystem fs = FileSystems.newFileSystem(
             new URI("szs:" + TestMain.class.getResource("/HideAndSeekIcon.szs")), Collections.emptyMap()
         )) {
@@ -52,7 +52,7 @@ public class TestMain {
         }
     }
 
-    public static void mainOld(String[] args) throws Exception {
+    public static void main(String[] args) throws Exception {
         //noinspection DataFlowIssue
         try (Yaz0InputStream is = new Yaz0InputStream(TestMain.class.getResourceAsStream("/Common.szs"))) {
             try (U8File file = U8File.fromInputStream(is)) {

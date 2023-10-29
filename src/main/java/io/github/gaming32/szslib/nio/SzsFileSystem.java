@@ -173,6 +173,14 @@ public class SzsFileSystem extends FileSystem {
     }
 
     private DecompressedSzsFile.TreeNode getNode(SzsPath path) {
+        if (root.isRoot()) {
+            final String pathStr = path.toString();
+            try {
+                return file.getNode(path.isAbsolute() ? pathStr.substring(1) : pathStr);
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
         final String[] parts = path.normalize().getParts();
         if (parts.length == 0 || (parts.length == 1 && parts[0].isEmpty())) {
             return root;
