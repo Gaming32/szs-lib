@@ -1,4 +1,3 @@
-import io.github.gaming32.szslib.nio.SzsPath;
 import io.github.gaming32.szslib.u8.U8File;
 import io.github.gaming32.szslib.yaz0.Yaz0InputStream;
 
