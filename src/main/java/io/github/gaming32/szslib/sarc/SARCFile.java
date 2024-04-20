@@ -4,7 +4,6 @@ import io.github.gaming32.szslib.SzsDetector;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.ByteArrayInputStream;
-import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -95,8 +94,8 @@ public class SARCFile {
         is.skipNBytes(fileSize - 40 - 16L * nodeCount - maxEndData - beginningOfData);
     }
 
-    public static SARCFile open(InputStream is) throws IOException {
-        return new SARCFile(new DataInputStream(is));
+    public static SARCFile read(InputStream is) throws IOException {
+        return new SARCFile(is);
     }
 
     private static int readInt(InputStream is, boolean bigEndian) throws IOException {

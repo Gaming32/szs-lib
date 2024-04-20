@@ -11,7 +11,7 @@ public class TestMiniGame {
         try (InputStream is = new Yaz0InputStream(
             new FileInputStream("C:\\Users\\josia\\AppData\\Roaming\\yuzu\\dump\\0100F8F0000A2000\\romfs\\Etc\\MiniGame.szs")
         )) {
-            file = SARCFile.open(is);
+            file = SARCFile.read(is);
             if (is.read() != -1) {
                 throw new IllegalStateException();
             }
