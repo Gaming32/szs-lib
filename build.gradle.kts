@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "io.github.gaming32"
-version = "1.0-SNAPSHOT"
+version = "1.0.0"
 
 repositories {
     mavenCentral()
@@ -14,6 +14,10 @@ repositories {
 dependencies {
     api("org.apache.commons:commons-compress:1.26.1")
     compileOnlyApi("org.jetbrains:annotations:24.1.0")
+}
+
+java {
+    withSourcesJar()
 }
 
 publishing {
