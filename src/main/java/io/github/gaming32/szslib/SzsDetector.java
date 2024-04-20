@@ -15,11 +15,13 @@ import java.nio.file.Path;
 public class SzsDetector {
     public static final int YAZ0_MAGIC = 0x59617A30; // "Yaz0"
     public static final int U8_MAGIC = 0x55AA382D;
+    public static final int SARC_MAGIC = 0x53415243; // "SARC"
 
     public static Format getFormat(int magic) {
         return switch (magic) {
             case YAZ0_MAGIC -> Format.Yaz0;
             case U8_MAGIC -> Format.U8;
+            case SARC_MAGIC -> Format.SARC;
             default -> null;
         };
     }
@@ -64,7 +66,8 @@ public class SzsDetector {
 
     public enum Format {
         Yaz0(YAZ0_MAGIC),
-        U8(U8_MAGIC);
+        U8(U8_MAGIC),
+        SARC(SARC_MAGIC);
 
         private final int magic;
 

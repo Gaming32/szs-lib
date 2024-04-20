@@ -4,7 +4,12 @@ import io.github.gaming32.szslib.yaz0.Yaz0InputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
-import java.nio.file.*;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.util.Collections;
@@ -13,7 +18,7 @@ import java.util.HexFormat;
 public class TestMain {
     public static void main(String[] args) throws Exception {
         try (FileSystem fs = FileSystems.newFileSystem(
-            new URI("szs:" + TestMain.class.getResource("/Common.szs")), Collections.emptyMap()
+            new URI("szs:" + TestMain.class.getResource("/MiniGame.szs")), Collections.emptyMap()
         )) {
             Files.walkFileTree(fs.getPath("/"), new SimpleFileVisitor<>() {
                 @Override

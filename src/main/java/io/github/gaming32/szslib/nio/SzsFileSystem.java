@@ -11,11 +11,28 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
+import java.nio.file.DirectoryStream;
+import java.nio.file.FileStore;
+import java.nio.file.FileSystem;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.NotDirectoryException;
+import java.nio.file.OpenOption;
+import java.nio.file.Path;
+import java.nio.file.PathMatcher;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.WatchService;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileAttribute;
 import java.nio.file.attribute.UserPrincipalLookupService;
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Queue;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 public class SzsFileSystem extends FileSystem {
@@ -62,6 +79,7 @@ public class SzsFileSystem extends FileSystem {
                 }
             }
             case U8 -> U8File.fromInputStream(is);
+            default -> throw new IOException("Unsupported SZS format: " + format);
         };
     }
 

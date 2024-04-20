@@ -11,5 +11,6 @@ repositories {
 }
 
 dependencies {
-    api("org.apache.commons:commons-compress:1.23.0")
+    api("org.apache.commons:commons-compress:1.26.1")
+    compileOnlyApi("org.jetbrains:annotations:24.1.0")
 }
